@@ -47,13 +47,45 @@ mod linux {
     const IFACE_TYPE_ETHERNET: u16 = 1;
     const IFACE_TYPE_WIFI: u16 = 801;
 
+    // fn is_virtual_interface(iface_path: &Path) -> bool {
+    //     // Virtual interfaces usually lack a "device" entry or are under /sys/devices/virtual.
+    //     !iface_path.join("device").exists()
+    //         || fs::canonicalize(iface_path)
+    //             .ok()
+    //             .and_then(|p| p.to_str().map(|s| s.contains("/sys/devices/virtual/")))
+    //             .unwrap_or(false)
+    // }
+    //
     fn is_virtual_interface(iface_path: &Path) -> bool {
-        // Virtual interfaces usually lack a "device" entry or are under /sys/devices/virtual.
-        !iface_path.join("device").exists()
-            || fs::canonicalize(iface_path)
-                .ok()
-                .and_then(|p| p.to_str().map(|s| s.contains("/sys/devices/virtual/")))
-                .unwrap_or(false)
+        if !iface_path.join("device").exists() {
+            return true; // virtuale
+        }
+
+        if let Ok(canon) = fs::canonicalize(iface_path) {
+            if canon.to_str().map_or(false, |s| s.contains("/sys/devices/virtual/")) {
+                return true;
+            }
+        }
+
+        // Escludi loopback
+        if iface_path.file_name().and_then(|n| n.to_str()) == Some("lo") {
+            return true;
+        }
+
+        // Altri filtri: escludi interfacce docker, bridge, tun/tap ecc.
+        if let Some(name) = iface_path.file_name().and_then(|n| n.to_str()) {
+            if name.starts_with("docker")
+            || name.starts_with("br-")
+            || name.starts_with("veth")
+            || name.starts_with("tun")
+            || name.starts_with("tap")
+            || name.starts_with("vmnet")
+            {
+                return true;
+            }
+        }
+
+        false
     }
 
     fn read_mac(iface_path: &Path) -> Option<[u8; 6]> {
@@ -216,10 +248,10 @@ mod windows {
                 GetIfEntry2(&mut row)
             } == 0 {
                 if let Some(mac) = extract_mac_from_row(&row) {
-                    match (row.Type) {
+                    match (row.Type, row.PhysicalMediumType) {
                         // Verify interface type and physical medium.
-                        (IF_TYPE_IEEE80211) => wifi = Some(mac),
-                        (IF_TYPE_ETHERNET_CSMACD) => ethernet = Some(mac),
+                        (IF_TYPE_IEEE80211, NdisPhysicalMediumNative802_11) => wifi = Some(mac),
+                        (IF_TYPE_ETHERNET_CSMACD, NdisPhysicalMedium802_3) => ethernet = Some(mac),
                         _ => {}
                     }
                 }
