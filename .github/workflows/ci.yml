@@ -1,0 +1,37 @@
+name: Rust CI on Linux and Windows
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Build and run on Linux
+        run: |
+          cargo build --release
+          ./target/release/mac-rs
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Build and run on Windows
+        shell: powershell
+        run: |
+          cargo build --release
+          .\target\release\mac-rs.exe
