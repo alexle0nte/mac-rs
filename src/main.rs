@@ -216,10 +216,10 @@ mod windows {
                 GetIfEntry2(&mut row)
             } == 0 {
                 if let Some(mac) = extract_mac_from_row(&row) {
-                    match (row.Type, row.PhysicalMediumType) {
+                    match (row.Type) {
                         // Verify interface type and physical medium.
-                        (IF_TYPE_IEEE80211, NdisPhysicalMediumNative802_11) => wifi = Some(mac),
-                        (IF_TYPE_ETHERNET_CSMACD, NdisPhysicalMedium802_3) => ethernet = Some(mac),
+                        (IF_TYPE_IEEE80211) => wifi = Some(mac),
+                        (IF_TYPE_ETHERNET_CSMACD) => ethernet = Some(mac),
                         _ => {}
                     }
                 }
