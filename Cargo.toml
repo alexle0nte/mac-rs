@@ -1,0 +1,11 @@
+[package]
+name = "mac-rs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+windows-sys.version = "0.60.2"
+windows-sys.features = ["Win32_NetworkManagement_IpHelper", "Win32_Foundation", "Win32_Networking_WinSock", "Win32_NetworkManagement_Ndis"]
+
+tracing.version = "0.1"
+tracing.default-features = false
