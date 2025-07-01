@@ -47,44 +47,76 @@ mod linux {
     const IFACE_TYPE_ETHERNET: u16 = 1;
     const IFACE_TYPE_WIFI: u16 = 801;
 
-    // fn is_virtual_interface(iface_path: &Path) -> bool {
-    //     // Virtual interfaces usually lack a "device" entry or are under /sys/devices/virtual.
-    //     !iface_path.join("device").exists()
-    //         || fs::canonicalize(iface_path)
-    //             .ok()
-    //             .and_then(|p| p.to_str().map(|s| s.contains("/sys/devices/virtual/")))
-    //             .unwrap_or(false)
-    // }
-    //
-    fn is_virtual_interface(iface_path: &Path) -> bool {
+    /// Checks if the MAC address is "locally administered" (bit 1 of the first byte is set).
+    /// Locally administered addresses are usually assigned by software and not globally unique hardware addresses.
+    fn is_locally_administered_mac(mac: &[u8; 6]) -> bool {
+        (mac[0] & 0x02) != 0
+    }
+
+    /// Checks if the MAC address is from a known virtual machine vendor based on MAC OUI prefix.
+    /// Returns true if the MAC prefix matches known virtual adapters (VMware, Hyper-V, VirtualBox, etc.).
+    fn is_virtual_mac_vendor(mac: &[u8; 6]) -> bool {
+        // Known MAC OUIs for common virtual machine vendors.
+        // Source: https://standards-oui.ieee.org/oui.txt and common known VM vendors.
+        const VM_MAC_PREFIXES: &[[u8; 3]] = &[
+            [0x00, 0x05, 0x69], // VMware
+            [0x00, 0x0C, 0x29], // VMware
+            [0x00, 0x1C, 0x14], // VMware
+            [0x00, 0x50, 0x56], // VMware
+            [0x00, 0x03, 0xFF], // Microsoft Hyper-V
+            [0x00, 0x15, 0x5D], // Microsoft Hyper-V
+            [0x08, 0x00, 0x27], // Oracle VirtualBox
+            [0x0A, 0x00, 0x27], // Oracle VirtualBox
+            [0x00, 0x1C, 0x42], // Parallels
+        ];
+
+        VM_MAC_PREFIXES.iter().any(|prefix| prefix == &mac[0..3])
+    }
+
+    fn is_virtual_interface(iface_path: &Path, mac: &[u8; 6]) -> bool {
+        // If the interface does not have a 'device' entry, it is considered virtual.
         if !iface_path.join("device").exists() {
-            return true; // virtuale
+            return true;
         }
 
+        // Canonical path checks for virtual devices or hypervisor interfaces.
         if let Ok(canon) = fs::canonicalize(iface_path) {
-            println!("canon: {}", canon.display());
-            if canon.to_str().map_or(false, |s| s.contains("/sys/devices/virtual/")) {
-                return true;
+            if let Some(s) = canon.to_str() {
+                // Virtual devices path.
+                if s.contains("/sys/devices/virtual/") {
+                    return true;
+                }
+
+                // Hyper-V virtual interface.
+                if s.contains("VMBUS") {
+                    return true;
+                }
+
+                // Other hypervisors/virtualizations? Add strings here if needed:
+                // For example, KVM devices often under /sys/devices/virtual/net or specific patterns,
+                // but usually covered by "/sys/devices/virtual/" check.
             }
         }
 
-        // Escludi loopback
+        // Exclude loopback interface 'lo'.
         if iface_path.file_name().and_then(|n| n.to_str()) == Some("lo") {
             return true;
         }
 
-        // Altri filtri: escludi interfacce docker, bridge, tun/tap ecc.
+        // Exclude common container and virtual network interface prefixes.
         if let Some(name) = iface_path.file_name().and_then(|n| n.to_str()) {
-            println!("name: {name}");
-            if name.starts_with("docker")
-            || name.starts_with("br-")
-            || name.starts_with("veth")
-            || name.starts_with("tun")
-            || name.starts_with("tap")
-            || name.starts_with("vmnet")
-            {
+            let prefixes = ["docker", "br-", "veth", "tun", "tap", "vmnet"];
+            if prefixes.iter().any(|p| name.starts_with(p)) {
                 return true;
             }
+        }
+
+        if is_locally_administered_mac(&mac) {
+            return true;
+        }
+
+        if is_virtual_mac_vendor(&mac) {
+            return true;
         }
 
         false
@@ -151,7 +183,7 @@ mod linux {
             println!("Checking iface: {}, mac: {:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}", iface_name, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
             // Skip if interface is virtual.
-            if is_virtual_interface(&iface_path) {
+            if is_virtual_interface(&iface_path, &mac) {
                 continue;
             }
 
