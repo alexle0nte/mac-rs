@@ -16,6 +16,11 @@ jobs:
         with:
           toolchain: stable
           override: true
+
+      - name: Debug
+        run: |
+          ls /sys/class/net
+
       - name: Build and run on Linux
         run: |
           cargo build --release

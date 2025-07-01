@@ -62,6 +62,7 @@ mod linux {
         }
 
         if let Ok(canon) = fs::canonicalize(iface_path) {
+            println!("canon: {}", canon.display());
             if canon.to_str().map_or(false, |s| s.contains("/sys/devices/virtual/")) {
                 return true;
             }
@@ -74,6 +75,7 @@ mod linux {
 
         // Altri filtri: escludi interfacce docker, bridge, tun/tap ecc.
         if let Some(name) = iface_path.file_name().and_then(|n| n.to_str()) {
+            println!("name: {name}");
             if name.starts_with("docker")
             || name.starts_with("br-")
             || name.starts_with("veth")
@@ -138,11 +140,7 @@ mod linux {
         // Iterate over each directory entry representing a network interface.
         for entry in entries.flatten() {
             let iface_path = entry.path();
-
-            // Skip if interface is virtual.
-            if is_virtual_interface(&iface_path) {
-                continue;
-            }
+            let iface_name = iface_path.file_name().unwrap().to_str().unwrap_or("unknown");
 
             // Skip interface if MAC is invalid or unreadable.
             let mac = match read_mac(&iface_path) {
@@ -150,11 +148,20 @@ mod linux {
                 None => continue,
             };
 
+            println!("Checking iface: {}, mac: {:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}", iface_name, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+            // Skip if interface is virtual.
+            if is_virtual_interface(&iface_path) {
+                continue;
+            }
+
             // Skip if interface type is unknown or unparseable.
             let iface_type = match get_interface_type(&iface_path) {
                 Some(t) => t,
                 None => continue,
             };
+
+            println!("Type: {iface_type}\n\n---------------------\n\n");
 
             // Classify based on wireless flag and interface type.
             match (is_wireless(&iface_path), iface_type) {
